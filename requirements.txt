@@ -1,0 +1,4 @@
+discord
+asyncio
+python-dotenv
+openai
