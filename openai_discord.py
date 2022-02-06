@@ -70,6 +70,7 @@ async def on_message(message):
     await client.process_commands(message)
 
     content = message.clean_content
+    ctx = await client.get_context(message)
 
     if (
         message.author == client.user
@@ -88,12 +89,6 @@ async def on_message(message):
         await client.close()
         task_running = False  # stop being sussy!!
 
-    bot_mention = "@" + client.user.display_name
-    print("\n\n" + bot_mention + "\n\n")
-    if content.startswith(bot_mention):
-        content = content[len(bot_mention):]
-
-    ctx = await client.get_context(message)
 
     # random chance to respond to a message, always respond if mentioned
     if random.randint(0, 100) < 25 or client.user.mentioned_in(message):
@@ -110,6 +105,11 @@ async def on_message(message):
         me = ctx.guild.get_member(client.user.id)
         if me in all_mentions:
             all_mentions.remove(me)
+
+        bot_mention = "@" + me.display_name
+        print("mention " + bot_mention)
+        if content.startswith(bot_mention):
+            content = content[len(bot_mention):].strip()
 
         # add author name to prompt
         messages[2] = f"{message.author.name}: {content}"
@@ -134,7 +134,7 @@ async def on_message(message):
                 all_mentions += first_in_chain.mentions
 
         # Start the prompt with necessary context
-        user_prompt = f"Your name is {client.user.display_name}. You are talking to {message.author.name} and others in a Discord server called {ctx.guild.name}. "
+        user_prompt = f"Your name is {client.user.name}, you go by the name {me.display_name}. You are talking to {message.author.name} and others in a Discord server called {ctx.guild.name}. "
 
         # tell the AI what its playing
         if len(currentGame) != 0:
