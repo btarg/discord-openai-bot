@@ -11,7 +11,7 @@ load_dotenv()
 import asyncio
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
-task_running = True
+task_running = False
 
 # Use Bot instead of Discord Client for commands
 # Give it ALL THE POWER
@@ -47,7 +47,7 @@ async def on_ready():
     print("We have logged in as {0.user}".format(client))
     if task_running == False and generateGame == True:
         # let's get sussy ඞ
-        client.loop.create_task(generateTask())
+        await generateTask()
 
 # Asyncio used to create background task
 async def generateTask():
