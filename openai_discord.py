@@ -134,13 +134,13 @@ async def on_message(message):
                 all_mentions += first_in_chain.mentions
 
         # Start the prompt with necessary context
-        user_prompt = f"Your name is {client.user.name}, you go by the name {me.display_name}. You are talking to {message.author.name} and others in a Discord server called {ctx.guild.name}. "
+        user_prompt = f"Your name is {client.user.name}, you go by the name {me.display_name}. You are talking to {message.author.name} and others in a Discord server called {ctx.guild.name}"
 
         # tell the AI what its playing
         if len(currentGame) != 0:
-            user_prompt += f"and playing {currentGame}\n"
+            user_prompt += f", while playing {currentGame}\n"
         else:
-            user_prompt += "\n"
+            user_prompt += ".\n"
 
         # Find out what other people involved in the conversation are playing
 
