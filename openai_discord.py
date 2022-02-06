@@ -39,6 +39,7 @@ async def getAIResponse(prompt):
 async def changeStatus():
     global currentGame
     currentGame = await getAIResponse("Q: name a videogame\nA:")
+    currentGame = currentGame.strip('"').strip()
     await client.change_presence(activity=discord.Game(name=currentGame))
 
 
@@ -65,24 +66,32 @@ async def prompt(ctx, string: str):
 
 @client.event
 async def on_message(message):
+    global task_running
     await client.process_commands(message)
+
+    content = message.clean_content
 
     if (
         message.author == client.user
-        or len(message.content) < 2
-        or message.content.startswith("!")
-        or message.content.startswith(".")  # uber bot prefix
+        or len(content) < 2
+        or content.startswith("!")
+        or content.startswith(".")  # uber bot prefix
     ):
         return
 
     if (
-        "stfu bot" in message.clean_content
+        "stfu bot" in content
         and message.author.guild_permissions.administrator
     ):
         await message.reply("fine then fuck you")
         print("Stop command issued")
         await client.close()
         task_running = False  # stop being sussy!!
+
+    bot_mention = "@" + client.user.display_name
+    print("\n\n" + bot_mention + "\n\n")
+    if content.startswith(bot_mention):
+        content = content[len(bot_mention):]
 
     ctx = await client.get_context(message)
 
@@ -103,7 +112,7 @@ async def on_message(message):
             all_mentions.remove(me)
 
         # add author name to prompt
-        messages[2] = f"{message.author.name}: {message.clean_content}"
+        messages[2] = f"{message.author.name}: {content}"
 
         # check if message is a reply
         if message.reference is not None:
@@ -111,9 +120,7 @@ async def on_message(message):
             reference_message = await ctx.channel.fetch_message(
                 message.reference.message_id
             )
-            messages[
-                1
-            ] = f"{reference_message.author.name}: {reference_message.clean_content}"
+            messages[1] = f"{reference_message.author.name}: {reference_message.clean_content}"
             all_mentions += reference_message.mentions
 
             # further down the rabbit hole
@@ -131,7 +138,7 @@ async def on_message(message):
 
         # tell the AI what its playing
         if len(currentGame) != 0:
-            user_prompt += f"You are playing {currentGame}\n"
+            user_prompt += f"and playing {currentGame}\n"
         else:
             user_prompt += "\n"
 
@@ -152,9 +159,9 @@ async def on_message(message):
                         msg = f"{member.name}'s status message says: "
 
                     if activity.type == discord.ActivityType.listening:
-                        msg += f"to {activity.name}: "
+                        msg += f"to {activity.name} "
                     else:
-                        msg += f"{activity.name}: "
+                        msg += f"{activity.name} "
 
                     if activity.type != discord.ActivityType.custom:
                         # Add details and state for more info
@@ -191,6 +198,7 @@ async def on_message(message):
 async def generateSentence(ctx, respond_to=None, prompt=""):
     if len(prompt) == 0:
         return
+
 
     async with ctx.typing():
         print("Querying API...")
