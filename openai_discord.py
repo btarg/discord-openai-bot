@@ -88,6 +88,7 @@ class CustomAIContext:
     whisperword = False
     whisperword_user = ""
     whisperword_channel = ""
+    my_funcs = locals()
 
     """
     Utility methods
@@ -129,13 +130,36 @@ class CustomAIContext:
         # special conditions. Yay. 
         content_value = content_value.replace("my","")
         content_value = content_value.replace("the","")
-        
+
         # attribute[1] is the value itself
         attribute_value[1].append(content_value)
 
     def set_attribute_value(self, attribute_value, content, trigger_phrase):
         content_value = self.trim_triggger_content(trigger_phrase, content)
         attribute_value[1] = content_value
+
+    def toJSON(self) -> str:
+        return json.dumps({
+            "user_attributes": self.user_attributes,
+            "bot_attributes ": self.bot_attributes,
+            "trigger_phrases_maps": self.trigger_phrases_maps,
+            "whisperword": self.whisperword,
+            "whisperword_user": self.whisperword_user,
+            "whisperword_channel": self.whisperword_channel,
+        })
+
+    def fromJSON(self, json_str):
+        self | json.load(json_str)
+
+        '''
+        self.user_attributes = json_obj["user_attributes"]
+        self.bot_attributes  = json_obj["bot_attributes "]
+        self.trigger_phrases_maps = json_obj["trigger_phrases_maps"]
+        self.whisperword = json_obj["whisperword"]
+        self.whisperword_user = json_obj["whisperword_user"]
+        self.whisperword_channel = json_obj["whisperword_channel"]
+        self.user_name = json_obj["user_name"]
+        '''
 
     def proces_triggers(self, content: str):
         '''
@@ -144,6 +168,8 @@ class CustomAIContext:
 
         Iterate over each trigger key and check to see if it matches something in the content. If it does,
         then call the matching method and pass the content along.
+
+        Methods are called with the magic of locals()
         '''
 
         content = content.lower()
@@ -152,7 +178,7 @@ class CustomAIContext:
             if phrase in content:
                 attribute_value = self.trigger_phrases_maps[phrase][0]
                 method = self.trigger_phrases_maps[phrase][1]
-                method(attribute_value, content, phrase)
+                self.my_funcs[method](self, attribute_value, content, phrase)
                 logging.debug(f"triggered {phrase}")
                 break
     
@@ -202,29 +228,6 @@ class CustomAIContext:
 
         return f"{bot_discussion_context_str} {user_discussion_context_str}"
     
-    def toJSON(self) -> str:
-        return json.dumps({
-            "user_attributes": self.user_attributes,
-            "bot_attributes ": self.bot_attributes,
-            "trigger_phrases_maps": self.trigger_phrases_maps,
-            "whisperword": self.whisperword,
-            "whisperword_user": self.whisperword_user,
-            "whisperword_channel": self.whisperword_channel,
-        })
-
-    def fromJSON(self, json_str):
-        self | json.load(json_str)
-
-        '''
-        self.user_attributes = json_obj["user_attributes"]
-        self.bot_attributes  = json_obj["bot_attributes "]
-        self.trigger_phrases_maps = json_obj["trigger_phrases_maps"]
-        self.whisperword = json_obj["whisperword"]
-        self.whisperword_user = json_obj["whisperword_user"]
-        self.whisperword_channel = json_obj["whisperword_channel"]
-        self.user_name = json_obj["user_name"]
-        '''
-    
 
     def __init__(self, user_name, bot_name, channel_id):
         # Attribute values are described as a list for rendering a string (Attribute prefix phrase and attribute 
@@ -234,33 +237,33 @@ class CustomAIContext:
 
         self.user_attributes = {
             "name": ["You are talking to ",""],
-            "clothing": [f"user_name is wearing ", []],
             "description": [f"user_name is ", ""],
+            "clothing": [f"user_name is wearing ", []],
         }
 
         self.bot_attributes = {
             "name": ["Your name is ", ""],
-            "clothing":["You are wearing ", []],
             "description":["You are a ",""],
-            "mood":["You are feeling ", ""]
+            "clothing":["You are wearing ", []],
+            "mood":["You are feeling ", ""],
         }
 
         # Map a phrase with an attribute name to be added to overall context. Order matters for phrases with lots of word overlap. 
         self.trigger_phrases_maps = {
-            "i put on"      : [self.user_attributes["clothing"],self.add_entry_to_attribute_list], #TODO: use NLP to allow for "i put [a thing] on. Assume the object is myself if none."
-            "put on"        : [self.bot_attributes["clothing"],self.add_entry_to_attribute_list],
-            "take off your" : [self.bot_attributes["clothing"],self.remove_entry_from_attribute_list], #TODO: I really need to channel "take off" phrase with subject object NLP conditions rather than handling it here
-            "i take off"    : [self.user_attributes["clothing"],self.remove_entry_from_attribute_list],
-            "you are"       : [self.bot_attributes["description"],self.set_attribute_value],
-            "i am"          : [self.user_attributes["description"],self.set_attribute_value],
-            "my name is"    : [self.user_attributes["name"],self.set_attribute_value]
+            "i put on"      : [self.user_attributes["clothing"], "add_entry_to_attribute_list"], #TODO: use NLP to allow for "i put [a thing] on. Assume the object is myself if none."
+            "put on"        : [self.bot_attributes["clothing"], "add_entry_to_attribute_list"],
+            "take off your" : [self.bot_attributes["clothing"], "remove_entry_from_attribute_list"], #TODO: I really need to channel "take off" phrase with subject object NLP conditions rather than handling it here
+            "i take off"    : [self.user_attributes["clothing"], "remove_entry_from_attribute_list"],
+            "you are"       : [self.bot_attributes["description"], "set_attribute_value"],
+            "i am"          : [self.user_attributes["description"], "set_attribute_value"],
+            "my name is"    : [self.user_attributes["name"], "set_attribute_value"]
         }
+
         self.whisperword = True
         self.whisperword_user = user_name
         self.whisperword_channel = channel_id
         self.bot_attributes["name"][1] = bot_name
         self.user_attributes["name"][1] = user_name
-
 
 
 

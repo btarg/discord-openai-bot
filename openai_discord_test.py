@@ -34,8 +34,7 @@ class TestCustomAIContext(unittest.TestCase):
         pass
 
     def test_toJSON(self):
-        json_str = self.tc.toJSON()
-        self.assertTrue("shrubbery" in json_str)
+        pass
 
 
     def test_fromJSON(self):
