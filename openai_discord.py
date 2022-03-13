@@ -6,6 +6,7 @@ from discord.ext.commands import Bot
 import openai
 import re
 import spacy
+import json
 
 nlp = spacy.load("en_core_web_sm")
 
@@ -80,12 +81,13 @@ class CustomAIContext:
     Example: "You are Joebob. You are a junky clown. You are wearing a clown suit, a clown hat. You are talking to 
     Jamin. Jamin is a human male. Jamin is wearing a bananahammock, a windbreaker."
     '''
-
-    #For safety ;-)
+    
+    user_attributes = []
+    bot_attributes =  []
+    trigger_phrases_maps = {}
     whisperword = False
-    whisperword_user =  ""
+    whisperword_user = ""
     whisperword_channel = ""
-    user_name = ""
 
     """
     Utility methods
@@ -114,10 +116,7 @@ class CustomAIContext:
         '''
         content_value: str
         content_value = self.trim_triggger_content(trigger_phrase, content)
-
-        # special conditions. Yay.
-        content_value = content_value.replace("my","")
-        content_value = content_value.replace("the","")
+        
         for index, value in enumerate(attribute_value[1]):
             if content_value in value:
                 attribute_value[1].pop(index)
@@ -126,43 +125,17 @@ class CustomAIContext:
 
     def add_entry_to_attribute_list(self, attribute_value, content, trigger_phrase):
         content_value = self.trim_triggger_content(trigger_phrase, content)
+
+        # special conditions. Yay. 
+        content_value = content_value.replace("my","")
+        content_value = content_value.replace("the","")
+        
         # attribute[1] is the value itself
         attribute_value[1].append(content_value)
 
     def set_attribute_value(self, attribute_value, content, trigger_phrase):
         content_value = self.trim_triggger_content(trigger_phrase, content)
         attribute_value[1] = content_value
-
-    # Attribute values are described as a list for rendering a string (Attribute prefix phrase (which is never set), attribute 
-    # value (which is what this is all about))
-    # Keep the name at the top, that ordering matters.
-
-    user_attributes = {
-        "name": ["You are talking to ",""],
-        "clothing": [f"{user_name} is wearing ", []],
-        "description": [f"{user_name} is a ", ""],
-    }
-    bot_attributes = {
-        "name": ["Your name is ", ""],
-        "clothing":["You are wearing ", []],
-        "description":["You are a ",""],
-        "mood":["You are feeling ", ""]
-    }
-
-    def update_attribute_prefixes(self):
-        self.user_attributes["clothing"][0] = f"{self.user_name} is wearing "
-        self.user_attributes["description"][0] = f"{self.user_name} is a "
-
-    # Map a phrase with an attribute name to be added to overall context. Order matters for phrases with lots of word overlap. 
-    trigger_phrases_maps = {
-        "i put on"      : [user_attributes["clothing"],add_entry_to_attribute_list], #TODO: use NLP to allow for "i put [a thing] on. Assume the object is myself if none."
-        "put on"        : [bot_attributes["clothing"],add_entry_to_attribute_list],
-        "take off your" : [bot_attributes["clothing"],remove_entry_from_attribute_list], #TODO: I really need to channel "take off" phrase with subject object NLP conditions rather than handling it here
-        "i take off"    : [user_attributes["clothing"],remove_entry_from_attribute_list],
-        "you are"       : [bot_attributes["description"],set_attribute_value],
-        "i am"          : [user_attributes["description"],set_attribute_value],
-        "my name is"    : [user_attributes["name"],set_attribute_value]
-    }
 
     def proces_triggers(self, content: str):
         '''
@@ -172,8 +145,6 @@ class CustomAIContext:
         Iterate over each trigger key and check to see if it matches something in the content. If it does,
         then call the matching method and pass the content along.
         '''
-        # Need this because fstring variable updates
-        self.update_attribute_prefixes()
 
         content = content.lower()
         for phrase in self.trigger_phrases_maps:
@@ -181,12 +152,11 @@ class CustomAIContext:
             if phrase in content:
                 attribute_value = self.trigger_phrases_maps[phrase][0]
                 method = self.trigger_phrases_maps[phrase][1]
-                method(self, attribute_value, content, phrase)
+                method(attribute_value, content, phrase)
                 logging.debug(f"triggered {phrase}")
                 break
-        
-        self.update_attribute_prefixes()
-        
+    
+    #TODO: Create a method to determine subject and object
 
     def get_context_str(self):
         '''
@@ -217,28 +187,81 @@ class CustomAIContext:
                 bot_discussion_context_str += attr[0]
                 bot_discussion_context_str += attr[1]
                 bot_discussion_context_str += ". "
-
-        # Same exact thing for user attributes
+            
+        # Same exact thing for user attributes. Just replace user_name keyword
         for attr in self.user_attributes.values():
             if type(attr[1]) == list:
                 if len(attr[1]) != 0:
-                    user_discussion_context_str += attr[0]
+                    user_discussion_context_str += attr[0].replace("user_name", self.user_attributes["name"][1])
                     user_discussion_context_str += ", ".join(attr[1])
                     user_discussion_context_str += ". "
             elif attr[1] != "":
-                user_discussion_context_str += attr[0]
+                user_discussion_context_str += attr[0].replace("user_name", self.user_attributes["name"][1])
                 user_discussion_context_str += attr[1]
                 user_discussion_context_str += ". "
-        return f"{bot_discussion_context_str} {user_discussion_context_str}"
 
+        return f"{bot_discussion_context_str} {user_discussion_context_str}"
     
+    def toJSON(self) -> str:
+        return json.dumps({
+            "user_attributes": self.user_attributes,
+            "bot_attributes ": self.bot_attributes,
+            "trigger_phrases_maps": self.trigger_phrases_maps,
+            "whisperword": self.whisperword,
+            "whisperword_user": self.whisperword_user,
+            "whisperword_channel": self.whisperword_channel,
+        })
+
+    def fromJSON(self, json_str):
+        self | json.load(json_str)
+
+        '''
+        self.user_attributes = json_obj["user_attributes"]
+        self.bot_attributes  = json_obj["bot_attributes "]
+        self.trigger_phrases_maps = json_obj["trigger_phrases_maps"]
+        self.whisperword = json_obj["whisperword"]
+        self.whisperword_user = json_obj["whisperword_user"]
+        self.whisperword_channel = json_obj["whisperword_channel"]
+        self.user_name = json_obj["user_name"]
+        '''
+    
+
     def __init__(self, user_name, bot_name, channel_id):
+        # Attribute values are described as a list for rendering a string (Attribute prefix phrase and attribute 
+        # value (which is what this is all about)). 
+        # Ordering matters here. It's the order of elements in the final string.
+        # ^user^ is replaced with the username in get_context_str()
+
+        self.user_attributes = {
+            "name": ["You are talking to ",""],
+            "clothing": [f"user_name is wearing ", []],
+            "description": [f"user_name is ", ""],
+        }
+
+        self.bot_attributes = {
+            "name": ["Your name is ", ""],
+            "clothing":["You are wearing ", []],
+            "description":["You are a ",""],
+            "mood":["You are feeling ", ""]
+        }
+
+        # Map a phrase with an attribute name to be added to overall context. Order matters for phrases with lots of word overlap. 
+        self.trigger_phrases_maps = {
+            "i put on"      : [self.user_attributes["clothing"],self.add_entry_to_attribute_list], #TODO: use NLP to allow for "i put [a thing] on. Assume the object is myself if none."
+            "put on"        : [self.bot_attributes["clothing"],self.add_entry_to_attribute_list],
+            "take off your" : [self.bot_attributes["clothing"],self.remove_entry_from_attribute_list], #TODO: I really need to channel "take off" phrase with subject object NLP conditions rather than handling it here
+            "i take off"    : [self.user_attributes["clothing"],self.remove_entry_from_attribute_list],
+            "you are"       : [self.bot_attributes["description"],self.set_attribute_value],
+            "i am"          : [self.user_attributes["description"],self.set_attribute_value],
+            "my name is"    : [self.user_attributes["name"],self.set_attribute_value]
+        }
         self.whisperword = True
         self.whisperword_user = user_name
         self.whisperword_channel = channel_id
         self.bot_attributes["name"][1] = bot_name
         self.user_attributes["name"][1] = user_name
-        self.user_name = user_name
+
+
 
 
 async def getAIResponse(prompt):
@@ -274,12 +297,13 @@ async def on_message(message):
     content = message.clean_content
     ctx = await client.get_context(message)
     
+
     # Escape 
     if (
         message.author == client.user
         or len(content) < 2
         or content.startswith("!")
-        or content.startswith(".")  # uber bot prefix
+        # or content.startswith(".")  # uber bot prefix
     ):
         return
 
@@ -302,17 +326,67 @@ async def on_message(message):
         for context in global_contexts:
             if context.whisperword_user == message.author.name and context.whisperword_channel == ctx.channel.id:
                 bot_ctx = context
-                logging.debug(f"using existing context for {message.author.name} in channel {ctx.channel.id}")
+                logging.info(f"using existing context for {message.author.name} in channel {ctx.channel.id}")
             else:
                 global_contexts.append(CustomAIContext(message.author.name, client.user.name, ctx.channel.id))
                 bot_ctx = global_contexts[len(global_contexts)-1]
-                logging.debug(f"created new context for {message.author.name} in channel {ctx.channel.id}")
+                logging.warn(f"created new context for {message.author.name} in channel {ctx.channel.id}")
                 
     else:
         global_contexts.append(CustomAIContext(message.author.name, client.user.name, ctx.channel.id))
         bot_ctx = global_contexts[len(global_contexts)-1]
-        logging.debug(f"created new context for {message.author.name} in channel {ctx.channel.id}")
+        logging.warn(f"created new context for {message.author.name} in channel {ctx.channel.id}")
 
+    
+    '''
+    Naming convention is:
+     [user_name].[value].[user|bot].[attribute].botctx
+     [user_name].[value].[user|bot].botctx
+     [user_name].[value].botctx
+    '''
+    if (".context.help" in content):
+        ctx.send("context.[get[] save.[bot|user].[clothing|description] load.[bot|user].[clothing|description]]")
+
+    if (".context" in content):
+        commands = content[1:].split(".")
+        value = ""
+        target = ""
+        if " " in content:
+            value = content[content.find(" "):].strip()
+        if len(commands) > 1:
+            if commands[1] == "get":
+                await ctx.send(bot_ctx.get_context_str())
+            if commands[1] == "save" or commands[1] == "load":
+                # save the entire context
+                operation = commands[1]
+                if len(commands) == 2:
+                    filename = f"{message.author.name}.{value}.botctx"
+                    saveobject = bot_ctx
+                    await ctx.send(f"I've performed the operation: {operation} the context as {value}")
+                # save either bot or user context
+                elif len(commands) == 3:
+                    target = commands[2]
+                    await ctx.send(f"The operation: {operation} by user/bot is not implemented yet")
+                    if len(commands) == 4:
+                        if commands[3] == "clothing":
+                            await ctx.send(f"The operation: {operation} clothing is not implemented yet")
+                            return
+                        elif commands[3] == "description":
+                            await ctx.send(f"The operation: {operation} description is not implemented yet")
+                            return
+                        else:
+                            await ctx.send("You didnt specify a valid attribute target")
+                            return
+                    return # Remove this return once implemented
+
+                with open(filename, "w") as botctx_file:
+                    botctx_file.write(json.dumps(saveobject))
+        else:
+            await ctx.send(bot_ctx.get_context_str())
+
+        return
+
+    
 
     # random chance to respond to a message, always respond if mentioned. Modified to always respond
     # if random.randint(0, 100) < 25 or client.user.mentioned_in(message):
@@ -326,7 +400,7 @@ async def on_message(message):
     all_mentions.append(message.author)
 
     bot_mention = "@" + client.user.display_name
-    #print("mention " + bot_mention)
+    logging.debug("mention " + bot_mention)
     if content.startswith(bot_mention):
         content = content[len(bot_mention):].strip()
 
@@ -357,13 +431,13 @@ async def on_message(message):
     if bot_ctx.whisperword == True and bot_ctx.whisperword_user == message.author.name and bot_ctx.whisperword_channel == ctx.channel.id:
         bot_ctx.proces_triggers(content)
         user_prompt = bot_ctx.get_context_str()
+        logging.info(user_prompt)
     else:
         name_str = message.author.name if user_name == "" else user_name
         user_prompt = f"Your name is {client.user.name}. You are talking to {name_str}. "
     nl = "\n"
     # Add the last bit of the prompt (currently "GreggsBot: ")
     user_prompt += "\n".join(messages) + f"{nl} {client.user.display_name}: "
-    logging.info(user_prompt)
 
     # we have finished building a prompt, send it to the API
     await generateSentence(ctx, message, user_prompt)
@@ -386,14 +460,14 @@ async def generateSentence(ctx, respond_to=None, prompt=""):
             return
 
     # either reply to a user or just send a message
+    response_log_str = response.replace("/n","")
+    logging.info(f"response: {response_log_str}")
     if respond_to != None:
-        logging.info(response)
         await respond_to.reply(response)
     else:
-        logging.info(response)
         await ctx.send(response)
 
-
-# Run bot
-print("Logging in...")
-client.run(os.environ["DISCORD_TOKEN"])
+if __name__ == '__main__':
+    # Run bot
+    print("Logging in...")
+    client.run(os.environ["DISCORD_TOKEN"])
