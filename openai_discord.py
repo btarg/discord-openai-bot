@@ -150,6 +150,7 @@ class CustomAIContext:
         if self.whisperword_user == context["whisperword_user"]:
             self.user_attributes.update(context["user_attributes"])
             self.bot_attributes.update(context["bot_attributes "])
+            self.update_trigger_phrase_maps()
             return "Loaded successfully"
         else:
             raise NameError("Context is for a different user.")
@@ -232,6 +233,18 @@ class CustomAIContext:
 
         return f"{bot_discussion_context_str} {user_discussion_context_str}"
     
+    def update_trigger_phrase_maps(self):
+        self.trigger_phrases_maps = {
+            "i put on"                      : [self.user_attributes["clothing"], "add_entry_to_attribute_list"], #TODO: use NLP to allow for "i put [a thing] on. Assume the object is myself if none."
+            "put on"                        : [self.bot_attributes["clothing"], "add_entry_to_attribute_list"],
+            "take off your"                 : [self.bot_attributes["clothing"], "remove_entry_from_attribute_list"], #TODO: I really need to channel "take off" phrase with subject object NLP conditions rather than handling it here
+            "i take off"                    : [self.user_attributes["clothing"], "remove_entry_from_attribute_list"],
+            "you are"                       : [self.bot_attributes["description"], "set_attribute_value"],
+            "i am"                          : [self.user_attributes["description"], "set_attribute_value"],
+            "my name is"                    : [self.user_attributes["name"], "set_attribute_value"],
+            "the environment around you"    : [self.user_attributes["environment"], "set_attribute_value"],
+            "we are in"                     : [self.user_attributes["environment"], "set_attribute_value"],
+        }
 
     def __init__(self, user_name, bot_name, channel_id):
         # Attribute values are described as a list for rendering a string (Attribute prefix phrase and attribute 
@@ -253,18 +266,7 @@ class CustomAIContext:
             "mood":["You are feeling ", ""],
         }
 
-        # Map a phrase with an attribute name to be added to overall context. Order matters for phrases with lots of word overlap. 
-        self.trigger_phrases_maps = {
-            "i put on"                      : [self.user_attributes["clothing"], "add_entry_to_attribute_list"], #TODO: use NLP to allow for "i put [a thing] on. Assume the object is myself if none."
-            "put on"                        : [self.bot_attributes["clothing"], "add_entry_to_attribute_list"],
-            "take off your"                 : [self.bot_attributes["clothing"], "remove_entry_from_attribute_list"], #TODO: I really need to channel "take off" phrase with subject object NLP conditions rather than handling it here
-            "i take off"                    : [self.user_attributes["clothing"], "remove_entry_from_attribute_list"],
-            "you are"                       : [self.bot_attributes["description"], "set_attribute_value"],
-            "i am"                          : [self.user_attributes["description"], "set_attribute_value"],
-            "my name is"                    : [self.user_attributes["name"], "set_attribute_value"],
-            "the environment around you"    : [self.user_attributes["environment"], "set_attribute_value"],
-            "we are in"                     : [self.user_attributes["environment"], "set_attribute_value"],
-        }
+        self.update_trigger_phrase_maps()
 
         self.whisperword = True
         self.whisperword_user = user_name
