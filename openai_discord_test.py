@@ -21,13 +21,13 @@ class TestCustomAIContext(unittest.TestCase):
 
     def test_set_user_attribute(self):
         self.assertEqual(self.tc.user_attributes["name"][1], "jamin")
-        self.assertEqual(self.tc.user_attributes["description"][1], "a tall man")
+        self.assertEqual(self.tc.user_attributes["description"][1][0], "a tall man")
         self.assertEqual(self.tc.user_attributes["clothing"][1][0], "a hat")
         self.assertEqual(self.tc.user_attributes["clothing"][1][1], "a cape")
 
     def test_set_bot_attribute(self):
         self.assertEqual(self.tc.bot_attributes["name"][1], "shrubbery")
-        self.assertEqual(self.tc.bot_attributes["description"][1], "a short woman")
+        self.assertEqual(self.tc.bot_attributes["description"][1][0], "a short woman")
         self.assertEqual(self.tc.bot_attributes["clothing"][1][0], "a robe")
         self.assertEqual(self.tc.bot_attributes["clothing"][1][1], "a jacket")
     
@@ -39,7 +39,7 @@ class TestCustomAIContext(unittest.TestCase):
         obj = json.loads(json_string)
         
         self.assertEqual(obj["user_attributes"]["name"][1], "jamin")
-        self.assertEqual(obj["user_attributes"]["description"][1], "a tall man")
+        self.assertEqual(obj["user_attributes"]["description"][1][0], "a tall man")
         self.assertEqual(obj["user_attributes"]["clothing"][1][0], "a hat")
         self.assertEqual(obj["user_attributes"]["clothing"][1][1], "a cape")
 
@@ -50,7 +50,7 @@ class TestCustomAIContext(unittest.TestCase):
         fresh_tc.load_context("test_context")
         
         self.assertEqual(fresh_tc.user_attributes["name"][1], "jamin")
-        self.assertEqual(fresh_tc.user_attributes["description"][1], "a tall man")
+        self.assertEqual(fresh_tc.user_attributes["description"][1][0], "a tall man")
         self.assertEqual(fresh_tc.user_attributes["clothing"][1][0], "a hat")
         self.assertEqual(fresh_tc.user_attributes["clothing"][1][1], "a cape")
         

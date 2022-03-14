@@ -45,10 +45,9 @@ logging.basicConfig(
 )
 
 '''
-TODO: Character location, sitting, standing, in front of, etc.
-TODO: Environment details
-TODO: Split by sentences
+TODO: Character location, sitting, standing, in front of, etc. (append to descriptions?)
 '''
+
 
 
 class CustomAIContext:
@@ -133,7 +132,7 @@ class CustomAIContext:
         with open(f"{CONTEXT_FOLDER}{self.whisperword_user}_{bot_context_save_name}.botctx", "w") as file:
             output = json.dumps({
                 "user_attributes": self.user_attributes,
-                "bot_attributes ": self.bot_attributes,
+                "bot_attributes": self.bot_attributes,
                 "whisperword": self.whisperword,
                 "whisperword_user": self.whisperword_user,
             })
@@ -148,8 +147,10 @@ class CustomAIContext:
             raise Exception(err)
 
         if self.whisperword_user == context["whisperword_user"]:
-            self.user_attributes.update(context["user_attributes"])
-            self.bot_attributes.update(context["bot_attributes "])
+            for userattr in context["user_attributes"]:
+                self.user_attributes[userattr][1] = context["user_attributes"][userattr][1]
+            for botattr in context["bot_attributes"]:
+                self.bot_attributes[botattr][1] = context["bot_attributes"][botattr][1]
             self.update_trigger_phrase_maps()
             return "Loaded successfully"
         else:
@@ -211,11 +212,11 @@ class CustomAIContext:
         for attr in self.bot_attributes.values():
             if type(attr[1]) == list:
                 if len(attr[1]) != 0:
-                    bot_discussion_context_str += attr[0]
+                    bot_discussion_context_str += attr[0].replace("bot_name", self.bot_attributes["name"][1])
                     bot_discussion_context_str += ", ".join(attr[1])
                     bot_discussion_context_str += ". "
             elif attr[1] != "":
-                bot_discussion_context_str += attr[0]
+                bot_discussion_context_str += attr[0].replace("bot_name", self.bot_attributes["name"][1])
                 bot_discussion_context_str += attr[1]
                 bot_discussion_context_str += ". "
             
@@ -235,16 +236,23 @@ class CustomAIContext:
     
     def update_trigger_phrase_maps(self):
         self.trigger_phrases_maps = {
+            "my name is"                    : [self.user_attributes["name"], "set_attribute_value"],
             "i put on"                      : [self.user_attributes["clothing"], "add_entry_to_attribute_list"], #TODO: use NLP to allow for "i put [a thing] on. Assume the object is myself if none."
+            "i take off"                    : [self.user_attributes["clothing"], "remove_entry_from_attribute_list"],
             "put on"                        : [self.bot_attributes["clothing"], "add_entry_to_attribute_list"],
             "take off your"                 : [self.bot_attributes["clothing"], "remove_entry_from_attribute_list"], #TODO: I really need to channel "take off" phrase with subject object NLP conditions rather than handling it here
-            "i take off"                    : [self.user_attributes["clothing"], "remove_entry_from_attribute_list"],
-            "you are"                       : [self.bot_attributes["description"], "set_attribute_value"],
-            "i am"                          : [self.user_attributes["description"], "set_attribute_value"],
-            "my name is"                    : [self.user_attributes["name"], "set_attribute_value"],
-            "the environment around you"    : [self.user_attributes["environment"], "set_attribute_value"],
-            "we are in"                     : [self.user_attributes["environment"], "set_attribute_value"],
+            "you are no longer"             : [self.bot_attributes["description"], "remove_entry_from_attribute_list"],
+            "you are"                       : [self.bot_attributes["description"], "add_entry_to_attribute_list"],
+            "you no longer have"            : [self.bot_attributes["description"], "remove_entry_from_attribute_list"],
+            "you have"                      : [self.bot_attributes["description"], "add_entry_to_attribute_list"],
+            "i am no longer"                : [self.user_attributes["description"], "remove_entry_from_attribute_list"],
+            "i am"                          : [self.user_attributes["description"], "add_entry_to_attribute_list"],
+            "i no longer have"              : [self.user_attributes["description"], "remove_entry_from_attribute_list"],
+            "i have"                        : [self.user_attributes["description"], "add_entry_to_attribute_list"],
+            "we are no longer in"           : [self.user_attributes["environment"], "remove_entry_from_attribute_list"],
+            "we are in"                     : [self.user_attributes["environment"], "add_entry_to_attribute_list"],
         }
+
 
     def __init__(self, user_name, bot_name, channel_id):
         # Attribute values are described as a list for rendering a string (Attribute prefix phrase and attribute 
@@ -254,16 +262,16 @@ class CustomAIContext:
 
         self.user_attributes = {
             "name": ["You are talking to ",""],
-            "description": [f"user_name is ", ""],
+            "description": [f"user_name is ", []],
             "clothing": [f"user_name is wearing ", []],
-            "environment":["We are in ", ""],
+            "environment":["We are in ", []],
         }
 
         self.bot_attributes = {
             "name": ["Your name is ", ""],
-            "description":["You are a ",""],
+            "description":["You are ",[]],
             "clothing":["You are wearing ", []],
-            "mood":["You are feeling ", ""],
+            "mood":["You are feeling ", []],
         }
 
         self.update_trigger_phrase_maps()
