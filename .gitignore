@@ -4,3 +4,4 @@ colab_downloaded/*
 aitextgen/*
 trained_model/*
 aitextgen.tokenizer.json
+contexts/*

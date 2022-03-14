@@ -1,5 +1,6 @@
 import unittest 
 import openai_discord
+import json
 
 class TestCustomAIContext(unittest.TestCase):
     CustomAIContext = openai_discord.CustomAIContext
@@ -33,12 +34,29 @@ class TestCustomAIContext(unittest.TestCase):
     def test_delete_attrbibutes(self):
         pass
 
-    def test_toJSON(self):
-        pass
+    def test_save_context(self):
+        json_string = self.tc.save_context("test_context")
+        obj = json.loads(json_string)
+        
+        self.assertEqual(obj["user_attributes"]["name"][1], "jamin")
+        self.assertEqual(obj["user_attributes"]["description"][1], "a tall man")
+        self.assertEqual(obj["user_attributes"]["clothing"][1][0], "a hat")
+        self.assertEqual(obj["user_attributes"]["clothing"][1][1], "a cape")
 
 
-    def test_fromJSON(self):
-        pass
+    def test_load_context(self):
+        fresh_tc = openai_discord.CustomAIContext("knight","spam","eggs and spam")
+        self.tc.save_context("test_context")
+        fresh_tc.load_context("test_context")
+        
+        self.assertEqual(fresh_tc.user_attributes["name"][1], "jamin")
+        self.assertEqual(fresh_tc.user_attributes["description"][1], "a tall man")
+        self.assertEqual(fresh_tc.user_attributes["clothing"][1][0], "a hat")
+        self.assertEqual(fresh_tc.user_attributes["clothing"][1][1], "a cape")
+        
+    def test_list_context(self):
+        self.assertTrue("test_context" in self.tc.list_context())
+
 
 if __name__ == '__main__':
     unittest.main()

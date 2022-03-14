@@ -1,10 +1,10 @@
+from cmath import e
 import logging
 import os
-import random
+from click import FileError
 import discord
 from discord.ext.commands import Bot
 import openai
-import re
 import spacy
 import json
 
@@ -24,20 +24,9 @@ task_running = False
 intents = discord.Intents.all()
 client = Bot("!", intents=intents)
 
-whisperword = False
-#For safety ;-)
-whisperword_user = ""
-whisperword_channel = ""
-
-clothing = []
-appearance = ""
-mood = ""
-
-user_name = ""
-user_description = ""
-user_clothing = []
 
 global_contexts = []
+CONTEXT_FOLDER =".\\contexts\\"
 
 # Define the log format
 log_format = (
@@ -58,8 +47,6 @@ logging.basicConfig(
 '''
 TODO: Character location, sitting, standing, in front of, etc.
 TODO: Environment details
-TODO: Fix 'put on' keywords
-TODO: Save context to disk
 TODO: Split by sentences
 '''
 
@@ -138,28 +125,40 @@ class CustomAIContext:
         content_value = self.trim_triggger_content(trigger_phrase, content)
         attribute_value[1] = content_value
 
-    def toJSON(self) -> str:
-        return json.dumps({
-            "user_attributes": self.user_attributes,
-            "bot_attributes ": self.bot_attributes,
-            "trigger_phrases_maps": self.trigger_phrases_maps,
-            "whisperword": self.whisperword,
-            "whisperword_user": self.whisperword_user,
-            "whisperword_channel": self.whisperword_channel,
-        })
+    def save_context(self, bot_context_save_name) -> str:
+        with open(f"{CONTEXT_FOLDER}{self.whisperword_user}_{bot_context_save_name}.botctx", "w") as file:
+            output = json.dumps({
+                "user_attributes": self.user_attributes,
+                "bot_attributes ": self.bot_attributes,
+                "whisperword": self.whisperword,
+                "whisperword_user": self.whisperword_user,
+            })
+            file.write(output)
+        return output
 
-    def fromJSON(self, json_str):
-        self | json.load(json_str)
+    def load_context(self, bot_context_save_name):
+        try:
+            with open(f"{CONTEXT_FOLDER}{self.whisperword_user}_{bot_context_save_name}.botctx", "r") as file:
+                context = json.loads(file.read())
+        except Exception as err:
+            raise Exception(err)
 
-        '''
-        self.user_attributes = json_obj["user_attributes"]
-        self.bot_attributes  = json_obj["bot_attributes "]
-        self.trigger_phrases_maps = json_obj["trigger_phrases_maps"]
-        self.whisperword = json_obj["whisperword"]
-        self.whisperword_user = json_obj["whisperword_user"]
-        self.whisperword_channel = json_obj["whisperword_channel"]
-        self.user_name = json_obj["user_name"]
-        '''
+        if self.whisperword_user == context["whisperword_user"]:
+            self.user_attributes.update(context["user_attributes"])
+            self.bot_attributes.update(context["bot_attributes "])
+            return "Loaded successfully"
+        else:
+            raise NameError("Context is for a different user.")
+
+
+    def list_context(self):
+        file_list = os.listdir(f"{CONTEXT_FOLDER}")
+        ctx_files = [
+            file.replace(".botctx","") for file in file_list 
+            if file.endswith(".botctx") and file.startswith(self.whisperword_user)
+        ]
+        ctx_files = [file.replace(f"{self.whisperword_user}_","") for file in ctx_files]
+        return ctx_files
 
     def proces_triggers(self, content: str):
         '''
@@ -179,7 +178,8 @@ class CustomAIContext:
                 attribute_value = self.trigger_phrases_maps[phrase][0]
                 method = self.trigger_phrases_maps[phrase][1]
                 self.my_funcs[method](self, attribute_value, content, phrase)
-                logging.debug(f"triggered {phrase}")
+                self.save_context("autosave")
+                logging.info(f"triggered {phrase}")
                 break
     
     #TODO: Create a method to determine subject and object
@@ -239,6 +239,7 @@ class CustomAIContext:
             "name": ["You are talking to ",""],
             "description": [f"user_name is ", ""],
             "clothing": [f"user_name is wearing ", []],
+            "environment":["We are in ", ""],
         }
 
         self.bot_attributes = {
@@ -250,13 +251,15 @@ class CustomAIContext:
 
         # Map a phrase with an attribute name to be added to overall context. Order matters for phrases with lots of word overlap. 
         self.trigger_phrases_maps = {
-            "i put on"      : [self.user_attributes["clothing"], "add_entry_to_attribute_list"], #TODO: use NLP to allow for "i put [a thing] on. Assume the object is myself if none."
-            "put on"        : [self.bot_attributes["clothing"], "add_entry_to_attribute_list"],
-            "take off your" : [self.bot_attributes["clothing"], "remove_entry_from_attribute_list"], #TODO: I really need to channel "take off" phrase with subject object NLP conditions rather than handling it here
-            "i take off"    : [self.user_attributes["clothing"], "remove_entry_from_attribute_list"],
-            "you are"       : [self.bot_attributes["description"], "set_attribute_value"],
-            "i am"          : [self.user_attributes["description"], "set_attribute_value"],
-            "my name is"    : [self.user_attributes["name"], "set_attribute_value"]
+            "i put on"                      : [self.user_attributes["clothing"], "add_entry_to_attribute_list"], #TODO: use NLP to allow for "i put [a thing] on. Assume the object is myself if none."
+            "put on"                        : [self.bot_attributes["clothing"], "add_entry_to_attribute_list"],
+            "take off your"                 : [self.bot_attributes["clothing"], "remove_entry_from_attribute_list"], #TODO: I really need to channel "take off" phrase with subject object NLP conditions rather than handling it here
+            "i take off"                    : [self.user_attributes["clothing"], "remove_entry_from_attribute_list"],
+            "you are"                       : [self.bot_attributes["description"], "set_attribute_value"],
+            "i am"                          : [self.user_attributes["description"], "set_attribute_value"],
+            "my name is"                    : [self.user_attributes["name"], "set_attribute_value"],
+            "the environment around you"    : [self.user_attributes["environment"], "set_attribute_value"],
+            "we are in"                     : [self.user_attributes["environment"], "set_attribute_value"],
         }
 
         self.whisperword = True
@@ -284,7 +287,7 @@ async def getAIResponse(prompt):
 
 @client.event
 async def on_ready():
-    print("We have logged in as {0.user}".format(client))
+    logging.warning("We have logged in as {0.user}".format(client))
 
 
 @client.command(aliases=["ai", "generate"])
@@ -295,7 +298,6 @@ async def prompt(ctx, string: str):
 @client.event
 async def on_message(message):
     global global_contexts
-    name_str = message.author.name if user_name == "" else user_name
     await client.process_commands(message)
     content = message.clean_content
     ctx = await client.get_context(message)
@@ -329,16 +331,15 @@ async def on_message(message):
         for context in global_contexts:
             if context.whisperword_user == message.author.name and context.whisperword_channel == ctx.channel.id:
                 bot_ctx = context
-                logging.info(f"using existing context for {message.author.name} in channel {ctx.channel.id}")
-            else:
-                global_contexts.append(CustomAIContext(message.author.name, client.user.name, ctx.channel.id))
-                bot_ctx = global_contexts[len(global_contexts)-1]
-                logging.warn(f"created new context for {message.author.name} in channel {ctx.channel.id}")
-                
+                logging.info(f"using existing context for {message.author.name} in channel {ctx.channel.id}")             
+        if bot_ctx == None:
+            global_contexts.append(CustomAIContext(message.author.name, client.user.name, ctx.channel.id))
+            bot_ctx = global_contexts[len(global_contexts)-1]
+            logging.warning(f"created new context for {message.author.name} in channel {ctx.channel.id}")        
     else:
         global_contexts.append(CustomAIContext(message.author.name, client.user.name, ctx.channel.id))
         bot_ctx = global_contexts[len(global_contexts)-1]
-        logging.warn(f"created new context for {message.author.name} in channel {ctx.channel.id}")
+        logging.warning(f"created new context for {message.author.name} in channel {ctx.channel.id}")
 
     
     '''
@@ -349,23 +350,33 @@ async def on_message(message):
     '''
     if (".context.help" in content):
         ctx.send("context.[get[] save.[bot|user].[clothing|description] load.[bot|user].[clothing|description]]")
-
+    # This following code is shit. Total unreadable shit.
     if (".context" in content):
         commands = content[1:].split(".")
         value = ""
         target = ""
         if " " in content:
             value = content[content.find(" "):].strip()
+            commands[-1] = commands[-1].split(" ")[0].split(".")[-1] # jesus fucking christ dude. you are desperate now. fix this shit.
         if len(commands) > 1:
             if commands[1] == "get":
                 await ctx.send(bot_ctx.get_context_str())
+            if commands[1] == "list" or commands[1] == "list":
+                context_list = bot_ctx.list_context()
+                await ctx.send(f"Here's the contexts I have: {context_list}")
             if commands[1] == "save" or commands[1] == "load":
                 # save the entire context
                 operation = commands[1]
                 if len(commands) == 2:
-                    filename = f"{message.author.name}.{value}.botctx"
-                    saveobject = bot_ctx
-                    await ctx.send(f"I've performed the operation: {operation} the context as {value}")
+                    if operation == "save":
+                        bot_ctx.save_context(value)
+                        await ctx.send(f"I've performed the operation: save the context as {value}")
+                    if operation == "load":
+                        try:
+                            bot_ctx.load_context(value)
+                            await ctx.send(f"I've performed the operation: load the context as {value}")
+                        except Exception as e:
+                            await ctx.send(f"{e}")
                 # save either bot or user context
                 elif len(commands) == 3:
                     target = commands[2]
@@ -381,12 +392,8 @@ async def on_message(message):
                             await ctx.send("You didnt specify a valid attribute target")
                             return
                     return # Remove this return once implemented
-
-                with open(filename, "w") as botctx_file:
-                    botctx_file.write(json.dumps(saveobject))
         else:
             await ctx.send(bot_ctx.get_context_str())
-
         return
 
     
@@ -436,7 +443,7 @@ async def on_message(message):
         user_prompt = bot_ctx.get_context_str()
         logging.info(user_prompt)
     else:
-        name_str = message.author.name if user_name == "" else user_name
+        name_str = message.author.name
         user_prompt = f"Your name is {client.user.name}. You are talking to {name_str}. "
     nl = "\n"
     # Add the last bit of the prompt (currently "GreggsBot: ")
