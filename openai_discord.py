@@ -91,7 +91,7 @@ class CustomAIContext:
     def log_attribute_change(self, attribute, content_value):
         content_value_str = content_value
         if type(content_value) is list:
-            content_value_str = " ".join(clothing)
+            content_value_str = " ".join(content_value)
         logging.info(f"{attribute}: {content_value_str}")
 
     """
@@ -104,6 +104,10 @@ class CustomAIContext:
         '''
         content_value: str
         content_value = self.trim_triggger_content(trigger_phrase, content)
+
+        # special conditions. Yay. 
+        content_value = content_value.replace("my","")
+        content_value = content_value.replace("the","")
         
         for index, value in enumerate(attribute_value[1]):
             if content_value in value:
@@ -114,16 +118,16 @@ class CustomAIContext:
     def add_entry_to_attribute_list(self, attribute_value, content, trigger_phrase):
         content_value = self.trim_triggger_content(trigger_phrase, content)
 
-        # special conditions. Yay. 
-        content_value = content_value.replace("my","")
-        content_value = content_value.replace("the","")
-
         # attribute[1] is the value itself
         attribute_value[1].append(content_value)
 
     def set_attribute_value(self, attribute_value, content, trigger_phrase):
         content_value = self.trim_triggger_content(trigger_phrase, content)
         attribute_value[1] = content_value
+
+    ''' 
+    Context Loading and Saving
+    '''
 
     def save_context(self, bot_context_save_name) -> str:
         with open(f"{CONTEXT_FOLDER}{self.whisperword_user}_{bot_context_save_name}.botctx", "w") as file:
@@ -160,7 +164,7 @@ class CustomAIContext:
         ctx_files = [file.replace(f"{self.whisperword_user}_","") for file in ctx_files]
         return ctx_files
 
-    def proces_triggers(self, content: str):
+    def proces_content_for_triggers(self, content: str):
         '''
         Trigger phrase Dict has the trigger phrases stored as keys with function calls to update attributes as the values.
         Why did I do it that way? Because i have no idea what I'm doing.
@@ -439,7 +443,7 @@ async def on_message(message):
     # Start the prompt with necessary context
     # whisperword represents keywords to change the nature of the prompt. We're gating this with a special keyword.
     if bot_ctx.whisperword == True and bot_ctx.whisperword_user == message.author.name and bot_ctx.whisperword_channel == ctx.channel.id:
-        bot_ctx.proces_triggers(content)
+        bot_ctx.proces_content_for_triggers(content)
         user_prompt = bot_ctx.get_context_str()
         logging.info(user_prompt)
     else:

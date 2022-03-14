@@ -17,7 +17,7 @@ class TestCustomAIContext(unittest.TestCase):
     ]
     
     for case in content:
-        tc.proces_triggers(case)
+        tc.proces_content_for_triggers(case)
 
     def test_set_user_attribute(self):
         self.assertEqual(self.tc.user_attributes["name"][1], "jamin")
@@ -57,6 +57,18 @@ class TestCustomAIContext(unittest.TestCase):
     def test_list_context(self):
         self.assertTrue("test_context" in self.tc.list_context())
 
+    def test_remove_entry_from_attribute_list(self):
+        self.tc.proces_content_for_triggers("I put on a tshirt")
+        self.tc.proces_content_for_triggers("Put on a bracelet")
+
+        self.assertTrue(len([item for item in self.tc.user_attributes["clothing"][1] if "tshirt" in item]) != 0)
+        self.assertTrue(len([item for item in self.tc.bot_attributes["clothing"][1] if "bracelet" in item]) != 0)
+
+        self.tc.proces_content_for_triggers("I take off my tshirt")
+        self.tc.proces_content_for_triggers("Take off your bracelet")
+
+        self.assertEqual([item for item in self.tc.user_attributes["clothing"][1] if "tshirt" in item], [])
+        self.assertEqual([item for item in self.tc.bot_attributes["clothing"][1] if "bracelet" in item], [])
 
 if __name__ == '__main__':
     unittest.main()
