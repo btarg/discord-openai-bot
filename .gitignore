@@ -5,3 +5,4 @@ aitextgen/*
 trained_model/*
 aitextgen.tokenizer.json
 contexts/*
+__pycache__
