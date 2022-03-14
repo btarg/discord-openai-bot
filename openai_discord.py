@@ -106,6 +106,8 @@ class CustomAIContext:
 
         # special conditions. Yay. 
         content_value = content_value.replace("my","")
+        content_value = content_value.replace("your","")
+        content_value = content_value.replace("our","")
         content_value = content_value.replace("the","")
         
         for index, value in enumerate(attribute_value[1]):
@@ -114,8 +116,14 @@ class CustomAIContext:
                 self.log_attribute_change(attribute_value, content_value)
                 return
 
-    def add_entry_to_attribute_list(self, attribute_value, content, trigger_phrase):
-        content_value = self.trim_triggger_content(trigger_phrase, content)
+    def add_entry_to_attribute_list(self, attribute_value, content, trigger_phrase: str):
+        content_value = content
+        if trigger_phrase.endswith("*") == False:
+            content_value = self.trim_triggger_content(trigger_phrase, content)
+            
+        user_name = self.user_attributes["name"][1]
+        content_value = content_value.replace("i have",f"{user_name} has")
+        content_value = content_value.replace("i am",f"{user_name} is")
 
         # attribute[1] is the value itself
         attribute_value[1].append(content_value)
@@ -242,13 +250,13 @@ class CustomAIContext:
             "put on"                        : [self.bot_attributes["clothing"], "add_entry_to_attribute_list"],
             "take off your"                 : [self.bot_attributes["clothing"], "remove_entry_from_attribute_list"], #TODO: I really need to channel "take off" phrase with subject object NLP conditions rather than handling it here
             "you are no longer"             : [self.bot_attributes["description"], "remove_entry_from_attribute_list"],
-            "you are"                       : [self.bot_attributes["description"], "add_entry_to_attribute_list"],
             "you no longer have"            : [self.bot_attributes["description"], "remove_entry_from_attribute_list"],
-            "you have"                      : [self.bot_attributes["description"], "add_entry_to_attribute_list"],
+            "you are*"                      : [self.bot_attributes["description"], "add_entry_to_attribute_list"],
+            "you have*"                     : [self.bot_attributes["description"], "add_entry_to_attribute_list"],
             "i am no longer"                : [self.user_attributes["description"], "remove_entry_from_attribute_list"],
-            "i am"                          : [self.user_attributes["description"], "add_entry_to_attribute_list"],
             "i no longer have"              : [self.user_attributes["description"], "remove_entry_from_attribute_list"],
-            "i have"                        : [self.user_attributes["description"], "add_entry_to_attribute_list"],
+            "i am*"                         : [self.user_attributes["description"], "add_entry_to_attribute_list"],
+            "i have*"                       : [self.user_attributes["description"], "add_entry_to_attribute_list"],
             "we are no longer in"           : [self.user_attributes["environment"], "remove_entry_from_attribute_list"],
             "we are in"                     : [self.user_attributes["environment"], "add_entry_to_attribute_list"],
         }
@@ -262,14 +270,14 @@ class CustomAIContext:
 
         self.user_attributes = {
             "name": ["You are talking to ",""],
-            "description": [f"user_name is ", []],
+            "description": ["", []],
             "clothing": [f"user_name is wearing ", []],
             "environment":["We are in ", []],
         }
 
         self.bot_attributes = {
             "name": ["Your name is ", ""],
-            "description":["You are ",[]],
+            "description":["",[]],
             "clothing":["You are wearing ", []],
             "mood":["You are feeling ", []],
         }
