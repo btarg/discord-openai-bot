@@ -44,11 +44,7 @@ logging.basicConfig(
     ]
 )
 
-'''
-TODO: Character location, sitting, standing, in front of, etc. (append to descriptions?)
-'''
-
-
+last_bot_message = ""
 
 class CustomAIContext:
     '''
@@ -109,6 +105,8 @@ class CustomAIContext:
         content_value = content_value.replace("your","")
         content_value = content_value.replace("our","")
         content_value = content_value.replace("the","")
+        if content_value.startswith("a "):
+            content_value = content_value.replace("a ","")
         
         for index, value in enumerate(attribute_value[1]):
             if content_value in value:
@@ -186,14 +184,17 @@ class CustomAIContext:
         '''
 
         content = content.lower()
-        for phrase in self.trigger_phrases_maps:
-            phrase = phrase.lower()
-            if phrase in content:
-                attribute_value = self.trigger_phrases_maps[phrase][0]
-                method = self.trigger_phrases_maps[phrase][1]
-                self.my_funcs[method](self, attribute_value, content, phrase)
+        if content.endswith("."):
+            content = content[:len(content)-2]
+
+        for trigger_phrase in self.trigger_phrases_maps:
+            trigger_phrase = trigger_phrase.lower()
+            if trigger_phrase.replace("*", "") in content:
+                attribute_value = self.trigger_phrases_maps[trigger_phrase][0]
+                method = self.trigger_phrases_maps[trigger_phrase][1]
+                self.my_funcs[method](self, attribute_value, content, trigger_phrase)
                 self.save_context("autosave")
-                logging.info(f"triggered {phrase}")
+                logging.info(f"triggered {trigger_phrase}")
                 break
     
     #TODO: Create a method to determine subject and object
@@ -319,6 +320,7 @@ async def prompt(ctx, string: str):
 
 @client.event
 async def on_message(message):
+    global last_bot_message
     global global_contexts
     await client.process_commands(message)
     content = message.clean_content
@@ -469,6 +471,9 @@ async def on_message(message):
         user_prompt = f"Your name is {client.user.name}. You are talking to {name_str}. "
     nl = "\n"
     # Add the last bit of the prompt (currently "GreggsBot: ")
+    if last_bot_message != "":
+        botname = bot_ctx.bot_attributes["name"]
+        user_prompt += f"{botname}: {last_bot_message}"
     user_prompt += "\n".join(messages) + f"{nl} {client.user.display_name}: "
 
     # we have finished building a prompt, send it to the API
@@ -478,6 +483,7 @@ async def on_message(message):
 
 # Actual function to generate AI sentences
 async def generateSentence(ctx, respond_to=None, prompt=""):
+    global last_bot_message
     if len(prompt) == 0:
         return
 
@@ -498,6 +504,7 @@ async def generateSentence(ctx, respond_to=None, prompt=""):
         await respond_to.reply(response)
     else:
         await ctx.send(response)
+    last_bot_message = response
 
 if __name__ == '__main__':
     # Run bot
