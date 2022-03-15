@@ -1,9 +1,11 @@
 from cmath import e
+from email import message
 import logging
 import os
 from click import FileError
 import discord
 from discord.ext.commands import Bot
+from discord.ext.commands import Context
 import openai
 import spacy
 import json
@@ -27,6 +29,7 @@ client = Bot("!", intents=intents)
 
 global_contexts = []
 CONTEXT_FOLDER =".\\contexts\\"
+MAX_CONVERSATION_HISTORY = 10
 
 # Define the log format
 log_format = (
@@ -44,7 +47,7 @@ logging.basicConfig(
     ]
 )
 
-last_bot_message = ""
+last_bot_message = []
 
 class CustomAIContext:
     '''
@@ -115,16 +118,18 @@ class CustomAIContext:
                 return
 
     def add_entry_to_attribute_list(self, attribute_value, content, trigger_phrase: str):
-        content_value = content
-        if trigger_phrase.endswith("*") == False:
-            content_value = self.trim_triggger_content(trigger_phrase, content)
-            
-        user_name = self.user_attributes["name"][1]
-        content_value = content_value.replace("i have",f"{user_name} has")
-        content_value = content_value.replace("i am",f"{user_name} is")
+        # Gate adding things only if sentence starts with them.
+        if content.startswith(trigger_phrase.removesuffix("*")):
+            content_value = content
+            if trigger_phrase.endswith("*") == False:
+                content_value = self.trim_triggger_content(trigger_phrase, content)
+                
+            user_name = self.user_attributes["name"][1]
+            content_value = content_value.replace("i have",f"{user_name} has")
+            content_value = content_value.replace("i am",f"{user_name} is")
 
-        # attribute[1] is the value itself
-        attribute_value[1].append(content_value)
+            # attribute[1] is the value itself
+            attribute_value[1].append(content_value)
 
     def set_attribute_value(self, attribute_value, content, trigger_phrase):
         content_value = self.trim_triggger_content(trigger_phrase, content)
@@ -185,7 +190,7 @@ class CustomAIContext:
 
         content = content.lower()
         if content.endswith("."):
-            content = content[:len(content)-2]
+            content = content[:len(content)-1]
 
         for trigger_phrase in self.trigger_phrases_maps:
             trigger_phrase = trigger_phrase.lower()
@@ -260,6 +265,7 @@ class CustomAIContext:
             "i have*"                       : [self.user_attributes["description"], "add_entry_to_attribute_list"],
             "we are no longer in"           : [self.user_attributes["environment"], "remove_entry_from_attribute_list"],
             "we are in"                     : [self.user_attributes["environment"], "add_entry_to_attribute_list"],
+            "there are"                     : [self.user_attributes["environment"], "add_entry_to_attribute_list"],
         }
 
 
@@ -290,6 +296,31 @@ class CustomAIContext:
         self.whisperword_channel = channel_id
         self.bot_attributes["name"][1] = bot_name
         self.user_attributes["name"][1] = user_name
+
+
+async def send_message(ctx: Context, content: str):
+    '''
+    Discord's message character limit is 2000.
+    Split the message by sentences using "."
+    Send half the sentences in the first half, 
+
+
+    The code will only send if 
+    '''
+    if len(content) > 2000:
+        logging.warning("Message too long to send to discord. Splitting message")
+        content = ""
+        message = ""
+        sentences = content.split(".")
+        for sentence in sentences:
+            if len(message) + len(sentence) < 2000:
+                message += sentence
+            else:
+                await ctx.send(message)
+                message = ""
+                message += sentence
+        
+        await ctx.send(message)
 
 
 
@@ -373,7 +404,7 @@ async def on_message(message):
      [user_name].[value].botctx
     '''
     if (".context.help" in content):
-        ctx.send("context.[get[] save.[bot|user].[clothing|description] load.[bot|user].[clothing|description]]")
+        send_message(ctx, "context.[get[] save.[bot|user].[clothing|description] load.[bot|user].[clothing|description]]")
     # This following code is shit. Total unreadable shit.
     if (".context" in content):
         commands = content[1:].split(".")
@@ -384,40 +415,40 @@ async def on_message(message):
             commands[-1] = commands[-1].split(" ")[0].split(".")[-1] # jesus fucking christ dude. you are desperate now. fix this shit.
         if len(commands) > 1:
             if commands[1] == "get":
-                await ctx.send(bot_ctx.get_context_str())
+                await send_message(ctx, bot_ctx.get_context_str())
             if commands[1] == "list" or commands[1] == "list":
                 context_list = bot_ctx.list_context()
-                await ctx.send(f"Here's the contexts I have: {context_list}")
+                await send_message(ctx, f"Here's the contexts I have: {context_list}")
             if commands[1] == "save" or commands[1] == "load":
                 # save the entire context
                 operation = commands[1]
                 if len(commands) == 2:
                     if operation == "save":
                         bot_ctx.save_context(value)
-                        await ctx.send(f"I've performed the operation: save the context as {value}")
+                        await send_message(ctx, f"I've performed the operation: save the context as {value}")
                     if operation == "load":
                         try:
                             bot_ctx.load_context(value)
-                            await ctx.send(f"I've performed the operation: load the context as {value}")
+                            await send_message(ctx, f"I've performed the operation: load the context as {value}")
                         except Exception as e:
-                            await ctx.send(f"{e}")
+                            await send_message(ctx, f"{e}")
                 # save either bot or user context
                 elif len(commands) == 3:
                     target = commands[2]
-                    await ctx.send(f"The operation: {operation} by user/bot is not implemented yet")
+                    await send_message(ctx, f"The operation: {operation} by user/bot is not implemented yet")
                     if len(commands) == 4:
                         if commands[3] == "clothing":
-                            await ctx.send(f"The operation: {operation} clothing is not implemented yet")
+                            await send_message(ctx, f"The operation: {operation} clothing is not implemented yet")
                             return
                         elif commands[3] == "description":
-                            await ctx.send(f"The operation: {operation} description is not implemented yet")
+                            await send_message(ctx, f"The operation: {operation} description is not implemented yet")
                             return
                         else:
-                            await ctx.send("You didnt specify a valid attribute target")
+                            await send_message(ctx, "You didnt specify a valid attribute target")
                             return
                     return # Remove this return once implemented
         else:
-            await ctx.send(bot_ctx.get_context_str())
+            await send_message(ctx, bot_ctx.get_context_str())
         return
 
     
@@ -472,17 +503,18 @@ async def on_message(message):
     nl = "\n"
     # Add the last bit of the prompt (currently "GreggsBot: ")
     if last_bot_message != "":
-        botname = bot_ctx.bot_attributes["name"]
+        botname = bot_ctx.bot_attributes["name"][1]
         user_prompt += f"{botname}: {last_bot_message}"
+
     user_prompt += "\n".join(messages) + f"{nl} {client.user.display_name}: "
 
     # we have finished building a prompt, send it to the API
-    await generateSentence(ctx, message, user_prompt)
+    await generateSentence(ctx, message, user_prompt, messages)
 
 
 
 # Actual function to generate AI sentences
-async def generateSentence(ctx, respond_to=None, prompt=""):
+async def generateSentence(ctx, respond_to=None, prompt="", messages=""):
     global last_bot_message
     if len(prompt) == 0:
         return
@@ -503,8 +535,12 @@ async def generateSentence(ctx, respond_to=None, prompt=""):
     if respond_to != None:
         await respond_to.reply(response)
     else:
-        await ctx.send(response)
-    last_bot_message = response
+        await send_message(ctx, response)
+    last_bot_message.append(messages[2].strip())
+    last_bot_message.append(response.strip())
+    if len(last_bot_message) > MAX_CONVERSATION_HISTORY:
+        last_bot_message.pop(0)
+        last_bot_message.pop(0)
 
 if __name__ == '__main__':
     # Run bot
