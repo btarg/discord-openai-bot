@@ -535,6 +535,8 @@ async def generateSentence(ctx: Context, prompt="") -> str:
         if response == "":
             return "Error generating sentence. Skill issue"
     
+    # TODO: Handle these better so that the first response is extracted. 
+    # TODO: Reset automatically if responses are too similar.
     # Bot has a tendency to try and speak for the user... not sure why
     # Handling that here by slicing off everything at "user_name:". It's wasteful, but cant seem to ween the AI off the habit
     speak_over_user_string = f"{ctx.author.name}:"
