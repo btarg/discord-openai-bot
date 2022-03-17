@@ -1,5 +1,5 @@
 import unittest 
-from openai_discord import PromptHandler
+from prompt_handler import PromptHandler
 import json
 
 nl = "\n"
