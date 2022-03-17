@@ -1,11 +1,11 @@
 import unittest 
-from openai_discord import CustomAIContext
+from openai_discord import PromptHandler
 import json
 
 nl = "\n"
 
 def build_tc_mock():
-    tc = CustomAIContext("knight","shrubbery","nih")
+    tc = PromptHandler("knight","shrubbery","nih", 3)
     content = [
         "My name is jamin",
         "I am a tall man",
@@ -51,7 +51,7 @@ class TestCustomAIContext(unittest.TestCase):
 
 
     def test_load_context(self):
-        fresh_tc = CustomAIContext("knight","spam","eggs and spam")
+        fresh_tc = PromptHandler("knight","spam","eggs and spam", 3)
         self.tc.save_context("test_context")
         fresh_tc.load_context("test_context")
         

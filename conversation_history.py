@@ -1,3 +1,6 @@
+from argparse import ArgumentError
+
+
 nl = "\n"
 class ConversationHistory:
     """
@@ -53,11 +56,17 @@ class ConversationHistory:
     
     def history_command(self, content) -> str:
         helpstring = "Available commands:\n.history.reset"
+        value = content[content.find(" "):].strip() if content.find(" ") != -1 else ""
         if ".history.reset" == content:
             self.reset_history()
             return "History was reset"
-        else: 
-            return f"Command wasnt recognized.\n{helpstring}"
+        if content.startswith(".history.max"):
+            if "" == value:
+                return Exception("Missing number in .history.max [number]")
+            self.set_max_messages(int(value))
+            return f"Max history set to {value}"
+
+        return f"Command wasnt recognized.\n{helpstring}"
 
     def __init__(self, max_messages) -> None:
         """
