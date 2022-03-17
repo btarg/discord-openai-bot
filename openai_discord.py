@@ -9,6 +9,7 @@ from discord.ext.commands import Context
 import openai
 import spacy
 import json
+from conversation_history import ConversationHistory
 
 nlp = spacy.load("en_core_web_sm")
 
@@ -30,6 +31,7 @@ client = Bot("!", intents=intents)
 global_contexts = []
 CONTEXT_FOLDER =".\\contexts\\"
 MAX_CONVERSATION_HISTORY = 10
+nl = "\n"
 
 # Define the log format
 log_format = (
@@ -46,8 +48,6 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-
-last_bot_message = []
 
 class CustomAIContext:
     '''
@@ -69,10 +69,14 @@ class CustomAIContext:
     
     user_attributes = []
     bot_attributes =  []
+    conversation_history = ConversationHistory(5)
+
     trigger_phrases_maps = {}
+
     whisperword = False
     whisperword_user = ""
     whisperword_channel = ""
+
     my_funcs = locals()
 
     """
@@ -108,6 +112,7 @@ class CustomAIContext:
         content_value = content_value.replace("your","")
         content_value = content_value.replace("our","")
         content_value = content_value.replace("the","")
+
         if content_value.startswith("a "):
             content_value = content_value.replace("a ","")
         
@@ -177,6 +182,44 @@ class CustomAIContext:
         ctx_files = [file.replace(f"{self.whisperword_user}_","") for file in ctx_files]
         return ctx_files
 
+    def context_command(self, content) -> str:
+        '''
+        Process an incoming .[command] message
+        '''
+        bot_ctx = self
+
+        if (".context.help" in content):
+            return "context.[get[] save.[bot|user].[clothing|description] load.[bot|user].[clothing|description]]"
+
+        if (".context" == content):
+            return bot_ctx.get_prompt("")
+        
+        if (content.startswith(".context.load")):
+            value = content[content.find(" "):].strip()
+            try:
+                self.load_context(value)
+                return f"I've performed the operation: load the context as {value}"
+            except Exception as err:
+                return f"{err}"
+
+        if (content.startswith(".context.save")):
+            value = content[content.find(" "):].strip()
+            if value == "":
+                return "Not saved. Name was empty."
+            bot_ctx.save_context(value)
+            return f"I've performed the operation: save the context as {value}"
+            
+        if (".context.get" == content):
+            return bot_ctx.get_prompt("")
+        
+        if (".context.list" == content):
+            context_list = bot_ctx.list_context()
+            return f"Here's the contexts I have: {context_list}"
+
+        if (".context.reset" == content):
+            bot_ctx.__init__(self.whisperword_user, self.bot_attributes["name"][1], self.whisperword_channel)
+            return f"I've performed the operation: reset the context"
+
     def proces_content_for_triggers(self, content: str):
         '''
         Trigger phrase Dict has the trigger phrases stored as keys with function calls to update attributes as the values.
@@ -204,21 +247,19 @@ class CustomAIContext:
     
     #TODO: Create a method to determine subject and object
 
-    def get_context_str(self):
+    def get_prompt(self, content):
         '''
-        Get the OpenAI context string to precede all messages.
-        
-        Context should always return in this format:
-        "You are {bot name}. {attribute strings}. You are talking to [user name]. {attribute strings}"
-
-        You is referencing the OpenAI bot.
+        Get the AI prompt. 
 
         Example: "You are Joebob. You are a junky clown. You are wearing a clown suit, a clown hat. You are talking to 
         Jamin. Jamin is a human male. Jamin is wearing a bananahammock, a windbreaker."
         '''
-
+        bot_name = self.bot_attributes["name"][1]
+        user_name = self.user_attributes["name"][1]
+        context_str = ""
         bot_discussion_context_str = ""
         user_discussion_context_str = ""
+        history_context_str = ""
 
         # Iterate all the bot attributes. 
         # attr[0] is the prefix phrase, it should exist on all attributes
@@ -226,33 +267,53 @@ class CustomAIContext:
         for attr in self.bot_attributes.values():
             if type(attr[1]) == list:
                 if len(attr[1]) != 0:
-                    bot_discussion_context_str += attr[0].replace("bot_name", self.bot_attributes["name"][1])
+                    bot_discussion_context_str += attr[0].replace("bot_name", bot_name)
                     bot_discussion_context_str += ", ".join(attr[1])
                     bot_discussion_context_str += ". "
             elif attr[1] != "":
-                bot_discussion_context_str += attr[0].replace("bot_name", self.bot_attributes["name"][1])
+                bot_discussion_context_str += attr[0].replace("bot_name", bot_name)
                 bot_discussion_context_str += attr[1]
                 bot_discussion_context_str += ". "
-            
+        
         # Same exact thing for user attributes. Just replace user_name keyword
         for attr in self.user_attributes.values():
             if type(attr[1]) == list:
                 if len(attr[1]) != 0:
-                    user_discussion_context_str += attr[0].replace("user_name", self.user_attributes["name"][1])
+                    user_discussion_context_str += attr[0].replace("user_name", user_name)
                     user_discussion_context_str += ", ".join(attr[1])
                     user_discussion_context_str += ". "
             elif attr[1] != "":
-                user_discussion_context_str += attr[0].replace("user_name", self.user_attributes["name"][1])
+                user_discussion_context_str += attr[0].replace("user_name", user_name)
                 user_discussion_context_str += attr[1]
                 user_discussion_context_str += ". "
+        
+        context_str = f"Provide only one response as yourself \n" # Because the bot likes to respond for the user sometimes. 
+        
+        # Make sure everything ends with a newling
+        user_discussion_context_str += nl
+        bot_discussion_context_str += nl
 
-        return f"{bot_discussion_context_str} {user_discussion_context_str}"
+        # Get the history to append
+        history_context_str = self.conversation_history.history_to_str()
+
+        # Add prompts for the targets
+        target_prompts = f"{user_name}: {content}{nl}{client.user.display_name}: "
+
+        # Bring everything together
+        context_str = f"{bot_discussion_context_str}{user_discussion_context_str}{history_context_str}{target_prompts}"
+
+        return context_str
     
     def update_trigger_phrase_maps(self):
+        # attribute phrase appended with a * indicates the attribute phrase is persisted with the rest of the data. This generally requires
+        # TODO: COMPLICATED: allow for multiple prepositional phrases.
+        # TODO: Create environment attributes separate of user
         self.trigger_phrases_maps = {
             "my name is"                    : [self.user_attributes["name"], "set_attribute_value"],
             "i put on"                      : [self.user_attributes["clothing"], "add_entry_to_attribute_list"], #TODO: use NLP to allow for "i put [a thing] on. Assume the object is myself if none."
             "i take off"                    : [self.user_attributes["clothing"], "remove_entry_from_attribute_list"],
+            "you are wearing"               : [self.bot_attributes["clothing"], "add_entry_to_attribute_list"],
+            "you are no longer wearing"     : [self.bot_attributes["clothing"], "remove_entry_from_attribute_list"],
             "put on"                        : [self.bot_attributes["clothing"], "add_entry_to_attribute_list"],
             "take off your"                 : [self.bot_attributes["clothing"], "remove_entry_from_attribute_list"], #TODO: I really need to channel "take off" phrase with subject object NLP conditions rather than handling it here
             "you are no longer"             : [self.bot_attributes["description"], "remove_entry_from_attribute_list"],
@@ -263,23 +324,42 @@ class CustomAIContext:
             "i no longer have"              : [self.user_attributes["description"], "remove_entry_from_attribute_list"],
             "i am*"                         : [self.user_attributes["description"], "add_entry_to_attribute_list"],
             "i have*"                       : [self.user_attributes["description"], "add_entry_to_attribute_list"],
-            "we are no longer in"           : [self.user_attributes["environment"], "remove_entry_from_attribute_list"],
-            "we are in"                     : [self.user_attributes["environment"], "add_entry_to_attribute_list"],
-            "there are"                     : [self.user_attributes["environment"], "add_entry_to_attribute_list"],
+            "we are no longer "             : [self.user_attributes["environment"], "remove_entry_from_attribute_list"],
+            "we are*"                       : [self.user_attributes["environment"], "add_entry_to_attribute_list"],
+            "there are no longer"           : [self.user_attributes["environment"], "add_entry_to_attribute_list"],
+            "there are*"                    : [self.user_attributes["environment"], "add_entry_to_attribute_list"],
+            "there is no longer"            : [self.user_attributes["environment"], "add_entry_to_attribute_list"],
+            "there is*"                     : [self.user_attributes["environment"], "add_entry_to_attribute_list"],
         }
+    ''' 
+    Notes on remodeling this using NLP or some other possibly better method.
+    Problem 1: reconstructing the sentence in the proper voice - first, second, or third person.
+        Ex: User input: "I am a squirrel with a voracious appetite."
+    More Simplistic Approach: have just one list of attribute phrases, which are stored when they hit trigger phrases.
+        Is removing stuff mor interesting in this approach? 
+    
+    One thing to mention about the existing approach is that there's really two types of triggers going on here:
+        1. Imperative: put on, take off. These initiate a change in state.
+            a. this could be extended further into "can you", "would you"
+        2. Declaratives: you are, i am, i have, there is, we are
+        Each of these then has a negated counterpart.
+
+    Single state objects: a specific user can only be in one location
+    I would love to be able to handle state based stuff like this
+        "I sit down on the bed". This could be a single entry string and update as things are going on. Could use NLP here 
+    '''
 
 
     def __init__(self, user_name, bot_name, channel_id):
-        # Attribute values are described as a list for rendering a string (Attribute prefix phrase and attribute 
-        # value (which is what this is all about)). 
-        # Ordering matters here. It's the order of elements in the final string.
-        # ^user^ is replaced with the username in get_context_str()
+        """
+        Create a new bot context for the user in the specific channel.
+        """
 
         self.user_attributes = {
             "name": ["You are talking to ",""],
             "description": ["", []],
             "clothing": [f"user_name is wearing ", []],
-            "environment":["We are in ", []],
+            "environment":["", []],
         }
 
         self.bot_attributes = {
@@ -300,16 +380,10 @@ class CustomAIContext:
 
 async def send_message(ctx: Context, content: str):
     '''
-    Discord's message character limit is 2000.
-    Split the message by sentences using "."
-    Send half the sentences in the first half, 
-
-
-    The code will only send if 
+    Send Discord message. If >2000 characters, split message.
     '''
     if len(content) > 2000:
         logging.warning("Message too long to send to discord. Splitting message")
-        content = ""
         message = ""
         sentences = content.split(".")
         for sentence in sentences:
@@ -319,8 +393,9 @@ async def send_message(ctx: Context, content: str):
                 await ctx.send(message)
                 message = ""
                 message += sentence
-        
-        await ctx.send(message)
+    else:
+        message = content
+    await ctx.send(message)
 
 
 
@@ -349,9 +424,11 @@ async def prompt(ctx, string: str):
     await generateSentence(ctx, prompt=string)
 
 
+
+
 @client.event
 async def on_message(message):
-    global last_bot_message
+    global conversation_history
     global global_contexts
     await client.process_commands(message)
     content = message.clean_content
@@ -386,161 +463,101 @@ async def on_message(message):
         for context in global_contexts:
             if context.whisperword_user == message.author.name and context.whisperword_channel == ctx.channel.id:
                 bot_ctx = context
-                logging.info(f"using existing context for {message.author.name} in channel {ctx.channel.id}")             
+                logging.info(f"on_message: using existing context for {message.author.name} in channel {ctx.channel.id}")             
         if bot_ctx == None:
             global_contexts.append(CustomAIContext(message.author.name, client.user.name, ctx.channel.id))
             bot_ctx = global_contexts[len(global_contexts)-1]
-            logging.warning(f"created new context for {message.author.name} in channel {ctx.channel.id}")        
+            logging.warning(f"on_message: created new context for {message.author.name} in channel {ctx.channel.id}")        
     else:
         global_contexts.append(CustomAIContext(message.author.name, client.user.name, ctx.channel.id))
         bot_ctx = global_contexts[len(global_contexts)-1]
-        logging.warning(f"created new context for {message.author.name} in channel {ctx.channel.id}")
+        logging.warning(f"on_message: created new context for {message.author.name} in channel {ctx.channel.id}")
 
-    
-    '''
-    Naming convention is:
-     [user_name].[value].[user|bot].[attribute].botctx
-     [user_name].[value].[user|bot].botctx
-     [user_name].[value].botctx
-    '''
-    if (".context.help" in content):
-        send_message(ctx, "context.[get[] save.[bot|user].[clothing|description] load.[bot|user].[clothing|description]]")
-    # This following code is shit. Total unreadable shit.
-    if (".context" in content):
-        commands = content[1:].split(".")
-        value = ""
-        target = ""
-        if " " in content:
-            value = content[content.find(" "):].strip()
-            commands[-1] = commands[-1].split(" ")[0].split(".")[-1] # jesus fucking christ dude. you are desperate now. fix this shit.
-        if len(commands) > 1:
-            if commands[1] == "get":
-                await send_message(ctx, bot_ctx.get_context_str())
-            if commands[1] == "list" or commands[1] == "list":
-                context_list = bot_ctx.list_context()
-                await send_message(ctx, f"Here's the contexts I have: {context_list}")
-            if commands[1] == "save" or commands[1] == "load":
-                # save the entire context
-                operation = commands[1]
-                if len(commands) == 2:
-                    if operation == "save":
-                        bot_ctx.save_context(value)
-                        await send_message(ctx, f"I've performed the operation: save the context as {value}")
-                    if operation == "load":
-                        try:
-                            bot_ctx.load_context(value)
-                            await send_message(ctx, f"I've performed the operation: load the context as {value}")
-                        except Exception as e:
-                            await send_message(ctx, f"{e}")
-                # save either bot or user context
-                elif len(commands) == 3:
-                    target = commands[2]
-                    await send_message(ctx, f"The operation: {operation} by user/bot is not implemented yet")
-                    if len(commands) == 4:
-                        if commands[3] == "clothing":
-                            await send_message(ctx, f"The operation: {operation} clothing is not implemented yet")
-                            return
-                        elif commands[3] == "description":
-                            await send_message(ctx, f"The operation: {operation} description is not implemented yet")
-                            return
-                        else:
-                            await send_message(ctx, "You didnt specify a valid attribute target")
-                            return
-                    return # Remove this return once implemented
-        else:
-            await send_message(ctx, bot_ctx.get_context_str())
+    if content.startswith(".context"):
+        await send_message(ctx, bot_ctx.context_command(content))
         return
 
-    
-
-    # random chance to respond to a message, always respond if mentioned. Modified to always respond
-    # if random.randint(0, 100) < 25 or client.user.mentioned_in(message):
-
-    # in order of chain: third latest reply - second latest reply - latest reply
-    # this is fucking stupid
-    messages = ["", "", ""]
-
-    # who is involved in the chain
-    all_mentions = message.mentions
-    all_mentions.append(message.author)
+    if content.startswith(".history"):
+        await send_message(ctx, bot_ctx.conversation_history.history_command(content))
+        return
+        
 
     bot_mention = "@" + client.user.display_name
-    logging.debug("mention " + bot_mention)
+    logging.debug("on_message: mention " + bot_mention)
     if content.startswith(bot_mention):
         content = content[len(bot_mention):].strip()
-
-    # add author name to prompt
-    messages[2] = f"{message.author.name}: {content}"
-
-    # check if message is a reply
-    if message.reference is not None:
-        # also contain the referenced message as extra context for the prompt
-        reference_message = await ctx.channel.fetch_message(
-            message.reference.message_id
-        )
-        messages[1] = f"{reference_message.author.name}: {reference_message.clean_content}"
-        all_mentions += reference_message.mentions
-
-        # further down the rabbit hole
-        if reference_message.reference is not None:
-            first_in_chain = await ctx.channel.fetch_message(
-                reference_message.reference.message_id
-            )
-            messages[
-                0
-            ] = f"{first_in_chain.author.name}: {first_in_chain.clean_content}"
-            all_mentions += first_in_chain.mentions
 
     # Start the prompt with necessary context
     # whisperword represents keywords to change the nature of the prompt. We're gating this with a special keyword.
     if bot_ctx.whisperword == True and bot_ctx.whisperword_user == message.author.name and bot_ctx.whisperword_channel == ctx.channel.id:
         bot_ctx.proces_content_for_triggers(content)
-        user_prompt = bot_ctx.get_context_str()
-        logging.info(user_prompt)
+        user_prompt = bot_ctx.get_prompt(content)
+        logging.info(f"on_message: user_prompt:{nl}{user_prompt}")
     else:
         name_str = message.author.name
-        user_prompt = f"Your name is {client.user.name}. You are talking to {name_str}. "
-    nl = "\n"
-    # Add the last bit of the prompt (currently "GreggsBot: ")
-    if last_bot_message != "":
-        botname = bot_ctx.bot_attributes["name"][1]
-        user_prompt += f"{botname}: {last_bot_message}"
+        user_prompt = f"on_message: Your name is {client.user.name}. You are talking to {name_str}. "
 
-    user_prompt += "\n".join(messages) + f"{nl} {client.user.display_name}: "
+    response = await generateSentence(ctx, user_prompt)
 
-    # we have finished building a prompt, send it to the API
-    await generateSentence(ctx, message, user_prompt, messages)
+    # Save history
+    bot_ctx.conversation_history.append_message(message.author.name, content)
+    bot_ctx.conversation_history.append_message(client.user.name, response)
+
+    # either reply to a user or just send a message
+    if message != None:
+        await message.reply(response)
+    else:
+        await send_message(ctx, response)
 
 
 
 # Actual function to generate AI sentences
-async def generateSentence(ctx, respond_to=None, prompt="", messages=""):
-    global last_bot_message
+async def generateSentence(ctx: Context, prompt="") -> str:
+    """
+    Fetch response from OpenAI
+    
+    Arguments
+        ctx: the Discord Context
+        prompt: prompt data
+    """
+    global conversation_history
     if len(prompt) == 0:
+        logging.error("generateSentence: Zero length response")
         return
-
 
     async with ctx.typing():
         #print("Querying API...")
-
-        response = await getAIResponse(prompt)
+        try:
+            response = await getAIResponse(prompt)
+        except Exception as err:
+            return err
 
         if response == "":
-            print("Error generating sentence. Skill issue")
-            return
+            return "Error generating sentence. Skill issue"
+    
+    # TODO: Handle these better so that the first response is extracted. 
+    # TODO: Reset automatically if responses are too similar.
+    # Bot has a tendency to try and speak for the user... not sure why
+    # Handling that here by slicing off everything at "user_name:". It's wasteful, but cant seem to ween the AI off the habit
+    speak_over_user_string = f"{ctx.author.name}:"
+    if speak_over_user_string in response:
+        logging.error(f"generateSentence: Detected AI taking on user role.")
+        logging.error(f"generateSentence: The prompt for this was: {prompt}")
+        logging.error(f"generateSentence: The response was: {response}")
+        response = response[:response.find(speak_over_user_string)]
+    
+    third_person_string = f"{ctx.me.name}: "
+    if third_person_string in response:
+        logging.error(f"generateSentence: Detected AI talking in third person.")
+        logging.error(f"generateSentence: The prompt for this was: {prompt}")
+        logging.error(f"generateSentence: The response was: {response}")
+        response = response[response.find(third_person_string) + len(third_person_string): ]
 
-    # either reply to a user or just send a message
     response_log_str = response.replace("/n","")
-    logging.info(f"response: {response_log_str}")
-    if respond_to != None:
-        await respond_to.reply(response)
-    else:
-        await send_message(ctx, response)
-    last_bot_message.append(messages[2].strip())
-    last_bot_message.append(response.strip())
-    if len(last_bot_message) > MAX_CONVERSATION_HISTORY:
-        last_bot_message.pop(0)
-        last_bot_message.pop(0)
+    logging.debug(f"generateSentence: response: {response_log_str}")
+
+    return response.strip()
+
 
 if __name__ == '__main__':
     # Run bot

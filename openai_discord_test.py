@@ -1,11 +1,11 @@
 import unittest 
-import openai_discord
+from openai_discord import CustomAIContext
 import json
 
-class TestCustomAIContext(unittest.TestCase):
-    CustomAIContext = openai_discord.CustomAIContext
-    tc = CustomAIContext("knight","shrubbery","nih")
+nl = "\n"
 
+def build_tc_mock():
+    tc = CustomAIContext("knight","shrubbery","nih")
     content = [
         "My name is jamin",
         "I am a tall man",
@@ -14,10 +14,16 @@ class TestCustomAIContext(unittest.TestCase):
         "I put on a cape",
         "Put on a robe",
         "Put on a jacket",
-    ]
-    
+    ]    
+
     for case in content:
         tc.proces_content_for_triggers(case)
+
+    return tc
+    
+class TestCustomAIContext(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tc = build_tc_mock()
 
     def test_set_user_attribute(self):
         self.assertEqual(self.tc.user_attributes["name"][1], "jamin")
@@ -45,7 +51,7 @@ class TestCustomAIContext(unittest.TestCase):
 
 
     def test_load_context(self):
-        fresh_tc = openai_discord.CustomAIContext("knight","spam","eggs and spam")
+        fresh_tc = CustomAIContext("knight","spam","eggs and spam")
         self.tc.save_context("test_context")
         fresh_tc.load_context("test_context")
         
@@ -69,6 +75,7 @@ class TestCustomAIContext(unittest.TestCase):
 
         self.assertEqual([item for item in self.tc.user_attributes["clothing"][1] if "tshirt" in item], [])
         self.assertEqual([item for item in self.tc.bot_attributes["clothing"][1] if "bracelet" in item], [])
+        
 
 if __name__ == '__main__':
     unittest.main()
