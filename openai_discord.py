@@ -204,6 +204,8 @@ class CustomAIContext:
 
         if (content.startswith(".context.save")):
             value = content[content.find(" "):].strip()
+            if value == "":
+                return "Not saved. Name was empty."
             bot_ctx.save_context(value)
             return f"I've performed the operation: save the context as {value}"
             
@@ -305,7 +307,7 @@ class CustomAIContext:
     def update_trigger_phrase_maps(self):
         # attribute phrase appended with a * indicates the attribute phrase is persisted with the rest of the data. This generally requires
         # TODO: COMPLICATED: allow for multiple prepositional phrases.
-        
+        # TODO: Create environment attributes separate of user
         self.trigger_phrases_maps = {
             "my name is"                    : [self.user_attributes["name"], "set_attribute_value"],
             "i put on"                      : [self.user_attributes["clothing"], "add_entry_to_attribute_list"], #TODO: use NLP to allow for "i put [a thing] on. Assume the object is myself if none."
@@ -343,7 +345,8 @@ class CustomAIContext:
         Each of these then has a negated counterpart.
 
     Single state objects: a specific user can only be in one location
-
+    I would love to be able to handle state based stuff like this
+        "I sit down on the bed". This could be a single entry string and update as things are going on. Could use NLP here 
     '''
 
 
@@ -473,6 +476,10 @@ async def on_message(message):
     if content.startswith(".context"):
         await send_message(ctx, bot_ctx.context_command(content))
         return
+
+    if content.startswith(".history"):
+        await send_message(ctx, bot_ctx.conversation_history.history_command(content))
+        return
         
 
     bot_mention = "@" + client.user.display_name
@@ -537,7 +544,7 @@ async def generateSentence(ctx: Context, prompt="") -> str:
         logging.error(f"generateSentence: The response was: {response}")
         response = response[:response.find(speak_over_user_string)]
     
-    third_person_string = ctx.me.name
+    third_person_string = f"{ctx.me.name}: "
     if third_person_string in response:
         logging.error(f"generateSentence: Detected AI talking in third person.")
         logging.error(f"generateSentence: The prompt for this was: {prompt}")

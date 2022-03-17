@@ -37,8 +37,7 @@ class ConversationHistory:
         """
         Sets history to empty array
         """
-
-        self.messagess = []
+        self.messages = []
 
     def set_max_messages(self, number: int):
         """
@@ -51,6 +50,14 @@ class ConversationHistory:
         if len(self.messages) - self.max_messages > 0:
             for x in range(len(self.messages) - self.max_messages):
                 self.messages.pop(x)
+    
+    def history_command(self, content) -> str:
+        helpstring = "Available commands:\n.history.reset"
+        if ".history.reset" == content:
+            self.reset_history()
+            return "History was reset"
+        else: 
+            return f"Command wasnt recognized.\n{helpstring}"
 
     def __init__(self, max_messages) -> None:
         """
