@@ -21,7 +21,7 @@ def build_tc_mock():
 
     return tc
     
-class TestCustomAIContext(unittest.TestCase):
+class TestPromptHandler(unittest.TestCase):
     def setUp(self) -> None:
         self.tc = build_tc_mock()
 
