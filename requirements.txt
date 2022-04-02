@@ -1,4 +1,4 @@
-py-cord
+discord
 asyncio
 python-dotenv
 openai
