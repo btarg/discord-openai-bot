@@ -4,3 +4,7 @@ colab_downloaded/*
 aitextgen/*
 trained_model/*
 aitextgen.tokenizer.json
+contexts/*
+__pycache__
+*.drawio
+experiments*
